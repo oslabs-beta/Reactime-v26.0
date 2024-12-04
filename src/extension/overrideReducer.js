@@ -234,10 +234,42 @@
     }, interval);
   }
 
+  function observeDOMChanges() {
+    console.log('[Reactime Debug] Setting up DOM mutation observer.');
+
+    const observer = new MutationObserver(() => {
+      const renderer = findValidRenderer();
+      if (renderer?.currentDispatcher?.useReducer) {
+        console.log('[Reactime Debug] useReducer detected during DOM mutation.');
+        setupOverride(renderer);
+        observer.disconnect(); // Stop observing once useReducer is found
+      }
+    });
+
+    observer.observe(document, { childList: true, subtree: true });
+  }
+
   function initialize() {
     if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
-      const renderer = findValidRenderer();
+      const originalInject = window.__REACT_DEVTOOLS_GLOBAL_HOOK__.inject;
 
+      // Override inject method to dynamically handle renderer registration
+      window.__REACT_DEVTOOLS_GLOBAL_HOOK__.inject = function (renderer) {
+        console.log('[Reactime Debug] Renderer registered via inject:', renderer);
+
+        if (renderer?.currentDispatcher?.useReducer) {
+          console.log('[Reactime Debug] useReducer detected in inject.');
+          setupOverride(renderer);
+        } else {
+          waitForHooks(renderer);
+        }
+
+        return originalInject.apply(this, arguments);
+      };
+
+      console.log('[Reactime Debug] React DevTools hook overridden.');
+
+      const renderer = findValidRenderer();
       if (renderer) {
         if (renderer.currentDispatcher?.useReducer) {
           // If hooks are immediately available, override them
@@ -246,6 +278,9 @@
           // If not, wait for hooks to become available
           waitForHooks(renderer);
         }
+      } else {
+        // Observe DOM mutations to handle dynamically loaded components
+        observeDOMChanges();
       }
     } else {
       console.error('[Reactime Debug] React DevTools hook not found.');
