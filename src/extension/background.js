@@ -376,6 +376,7 @@ chrome.runtime.onConnect.addListener(async (port) => {
     for (let i = 0; i < portsArr.length; i += 1) {
       if (portsArr[i] === e) {
         portsArr.splice(i, 1);
+        // chrome.runtime.sendMessage({ action: 'portDisconnect', port: e.name });
         setTimeout(async () => {
           try {
             const newPort = chrome.runtime.connect({ name: 'reconnected' }); // Attempt to reconnect
