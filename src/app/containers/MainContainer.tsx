@@ -19,7 +19,6 @@ import {
 } from '../slices/mainSlice';
 import { useDispatch, useSelector } from 'react-redux';
 import { MainState, RootState } from '../FrontendTypes';
-import HeatMapLegend from '../components/StateRoute/ComponentMap/heatMapLegend';
 
 /*
   This is the main container where everything in our application is rendered
@@ -33,13 +32,16 @@ function MainContainer(): JSX.Element {
   const { connectionStatus }: MainState = useSelector((state: RootState) => state.main);
 
   // JR 12.22.23: so far this log always returns true
-  // console.log('MainContainer connectionStatus at initialization: ', connectionStatus);
+  console.log('MainContainer connectionStatus at initialization: ', connectionStatus);
 
   const [actionView, setActionView] = useState(true); // We create a local state 'actionView' and set it to true
 
   // this function handles Time Jump sidebar view
   const toggleActionContainer = () => {
     setActionView(!actionView); // sets actionView to the opposite boolean value
+
+    const bodyContainer = document.getElementById('bodyContainer');
+    bodyContainer.classList.toggle('collapsed');
 
     const toggleElem = document.querySelector('aside'); // aside is like an added text that appears "on the side" aside some text.
     toggleElem.classList.toggle('no-aside'); // toggles the addition or the removal of the 'no-aside' class
@@ -212,6 +214,8 @@ function MainContainer(): JSX.Element {
           actionView={actionView}
           setActionView={setActionView}
           toggleActionContainer={toggleActionContainer}
+          snapshots={snapshots}
+          currLocation={currLocation}
         />
         {/* @ts-ignore */}
         {snapshots.length ? (
@@ -231,9 +235,11 @@ function MainContainer(): JSX.Element {
             />
           </div>
         ) : null}
-        {/* @ts-ignore */}
-        <TravelContainer snapshotsLength={snapshots.length} />
-        <ButtonsContainer />
+        <div className='bottom-controls'>
+          {/* @ts-ignore */}
+          <TravelContainer snapshotsLength={snapshots.length} />
+          <ButtonsContainer />
+        </div>
       </div>
     </div>
   );

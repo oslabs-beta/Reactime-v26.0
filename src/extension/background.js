@@ -16,6 +16,25 @@ let activeTab;
 const tabsObj = {};
 // Will store Chrome web vital metrics and their corresponding values.
 const metrics = {};
+function setupKeepAlive() {
+  //ellie
+  // Create an alarm that triggers every 4.9 minutes (under the 5-minute limit)
+  chrome.alarms.create('keepAlive', { periodInMinutes: 0.5 });
+
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'keepAlive') {
+      console.log('Keep-alive alarm triggered.');
+      pingServiceWorker();
+    }
+  });
+}
+// Ping the service worker to keep it alive
+function pingServiceWorker() {
+  // Use a lightweight API call to keep the service worker active
+  chrome.runtime.getPlatformInfo(() => {
+    console.log('Service worker pinged successfully');
+  });
+}
 
 // function pruning the chrome ax tree and pulling the relevant properties
 const pruneAxTree = (axTree) => {
@@ -267,14 +286,14 @@ function changeCurrLocation(tabObj, rootNode, index, name) {
 
 async function getActiveTab() {
   return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       if (tabs.length > 0) {
         resolve(tabs[0].id);
       } else {
-        reject(new Error('No active tab'))
+        reject(new Error('No active tab'));
       }
     });
-  })
+  });
 }
 
 /*
@@ -307,19 +326,29 @@ chrome.runtime.onConnect.addListener(async (port) => {
   portsArr.push(port); // push each Reactime communication channel object to the portsArr
   // sets the current Title of the Reactime panel
 
-/**
- * Sends messages to ports in the portsArr array, triggering a tab change action.
- */
+  /**
+   * Sends messages to ports in the portsArr array, triggering a tab change action.
+   */
   function sendMessagesToPorts() {
     portsArr.forEach((bg, index) => {
-        bg.postMessage({
-            action: 'changeTab',
-            payload: { tabId: activeTab.id, title: activeTab.title },
-        });
+      bg.postMessage({
+        action: 'changeTab',
+        payload: { tabId: activeTab.id, title: activeTab.title },
+      });
     });
-}
+  }
+  if (port.name === 'keepAlivePort') {
+    console.log('Keep-alive port connected:', port);
 
-  
+    // Keep the port open by responding to any message
+    port.onMessage.addListener((msg) => {
+      console.log('Received message from content script:', msg);
+    });
+
+    port.onDisconnect.addListener(() => {
+      console.warn('Keep-alive port disconnected.');
+    });
+  }
   if (portsArr.length > 0 && Object.keys(tabsObj).length > 0) {
     //if the activeTab is not set during the onActivate API, run a query to get the tabId and set activeTab
     if (!activeTab) {
@@ -330,8 +359,8 @@ chrome.runtime.onConnect.addListener(async (port) => {
           activeTab = tab;
           sendMessagesToPorts();
         }
-        });
-    };
+      });
+    }
   }
 
   if (Object.keys(tabsObj).length > 0) {
@@ -341,12 +370,28 @@ chrome.runtime.onConnect.addListener(async (port) => {
     });
   }
 
-  // every time devtool is closed, remove the port from portsArr
+  // Handles port disconnection by removing the disconnected port and attempting reconnection after 1s delay
+  // This prevents permanent connection loss during idle periods or temporary disconnects -ellie
   port.onDisconnect.addListener((e) => {
     for (let i = 0; i < portsArr.length; i += 1) {
       if (portsArr[i] === e) {
         portsArr.splice(i, 1);
-        chrome.runtime.sendMessage({ action: 'portDisconnect', port: e.name });
+        setTimeout(async () => {
+          try {
+            const newPort = chrome.runtime.connect({ name: 'reconnected' }); // Attempt to reconnect
+            if (newPort) {
+              portsArr.push(newPort); // Add the new port to the array
+              newPort.onMessage.addListener((msg) => {
+                console.log('Message received on reconnected port:', msg);
+              });
+              console.log('Port successfully reconnected');
+            } else {
+              console.warn('Failed to reconnect port');
+            }
+          } catch (error) {
+            console.warn('Port reconnection attempt failed:', error);
+          }
+        }, 1000);
         break;
       }
     }
@@ -428,7 +473,6 @@ chrome.runtime.onConnect.addListener(async (port) => {
         toggleAxRecord = !toggleAxRecord;
 
         await replaceEmptySnap(tabsObj, tabId, toggleAxRecord);
-
         // sends new tabs obj to devtools
         if (portsArr.length > 0) {
           portsArr.forEach((bg) =>
@@ -599,13 +643,26 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         break;
       }
 
-      // DUPLICATE SNAPSHOT CHECK
-      // This may be where the bug is coming from that when Reactime fails to collect
-      // state. If they happen to take the same actual duration, it won't record the snapshot.
-      const previousSnap =
-        tabsObj[tabId]?.currLocation?.stateSnapshot?.children[0]?.componentData?.actualDuration;
-      const incomingSnap = request.payload.children[0].componentData.actualDuration;
-      if (previousSnap === incomingSnap) {
+      // DUPLICATE SNAPSHOT CHECK -ellie
+      const isDuplicateSnapshot = (previous, incoming) => {
+        if (!previous || !incoming) return false;
+        const prevData = previous?.componentData;
+        const incomingData = incoming?.componentData;
+
+        // Check if both snapshots have required data
+        if (!prevData || !incomingData) return false;
+
+        const timeDiff = Math.abs(
+          (incomingData.timestamp || Date.now()) - (prevData.timestamp || Date.now()),
+        );
+        return prevData.actualDuration === incomingData.actualDuration && timeDiff < 1000;
+      };
+
+      const previousSnap = tabsObj[tabId]?.currLocation?.stateSnapshot?.children[0];
+      const incomingSnap = request.payload.children[0];
+
+      if (isDuplicateSnapshot(previousSnap, incomingSnap)) {
+        console.warn('Duplicate snapshot detected, skipping');
         break;
       }
 
@@ -626,7 +683,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             addedAxSnap = 'emptyAxSnap';
             tabsObj[tabId].axSnapshots.push(addedAxSnap);
           }
-
           sendToHierarchy(
             tabsObj[tabId],
             new HistoryNode(tabsObj[tabId], request.payload, addedAxSnap),
@@ -671,47 +727,25 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 // when a new url is loaded on the same tab,
-// this remove the tabid from the tabsObj, recreate the tab and inject the script
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  // check if the tab title changed to see if tab need to restart
-  if (changeInfo && tabsObj[tabId]) {
-    if (changeInfo.title && changeInfo.title !== tabsObj[tabId].title) {
-      // tell devtools which tab to delete
-      if (portsArr.length > 0) {
-        portsArr.forEach((bg) =>
-          bg.postMessage({
-            action: 'deleteTab',
-            payload: tabId,
-          }),
-        );
-      }
-
-      // delete the tab from the tabsObj
-      delete tabsObj[tabId];
-      delete reloaded[tabId];
-      delete firstSnapshotReceived[tabId];
-
-      // recreate the tab on the tabsObj
-      tabsObj[tabId] = createTabObj(changeInfo.title);
-    }
+//ellie
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url) {
+    chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content.bundle.js'],
+    });
   }
 });
 
-// when tab view is changed, put the tabid as the current tab
+// When tab view is changed, put the tabId as the current tab
 chrome.tabs.onActivated.addListener((info) => {
-  // get info about tab information from tabId
+  // Get info about the tab information from tabId
   chrome.tabs.get(info.tabId, (tab) => {
-    // never set a reactime instance to the active tab
+    // Never set a reactime instance to the active tab
     if (!tab.pendingUrl?.match('^chrome-extension')) {
       activeTab = tab;
 
-      /**this setInterval is here to make sure that the app does not stop working even
-       * if chrome pauses to save energy. There is probably a better solution, but v25 did
-       * not have time to complete.
-      */
-      setInterval(() => {
-        console.log(activeTab)
-      }, 10000);
+      // Send messages to active ports about the tab change
       if (portsArr.length > 0) {
         portsArr.forEach((bg) =>
           bg.postMessage({
@@ -725,15 +759,21 @@ chrome.tabs.onActivated.addListener((info) => {
 });
 
 // when reactime is installed
-// create a context menu that will open our devtools in a new window
+//ellie
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'reactime',
-    title: 'Reactime',
-    contexts: ['page', 'selection', 'image', 'link'],
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach((tab) => {
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content.bundle.js'],
+      });
+    });
   });
 });
 
+chrome.runtime.onStartup.addListener(() => {
+  setupKeepAlive();
+});
 // when context menu is clicked, listen for the menuItemId,
 // if user clicked on reactime, open the devtools window
 

@@ -7,10 +7,10 @@ import { Component } from 'react';
 import 'intro.js/introjs.css';
 import { TutorialProps, TutorialState, StepsObj } from '../../FrontendTypes';
 import { Button } from '@mui/material';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 const { Steps } = require('intro.js-react'); //Must be required in. This enables compatibility with TS. If imported in, throws ts error of not rendering steps as a class component correctly. The package 'intro.js-react' is small React wrapper around Intro.js. The wrapper provides support for both steps and hints. https://introjs.com/docs/
 import { setCurrentTabInApp, tutorialSaveSeriesToggle } from '../../slices/mainSlice';
-import { useDispatch, useSelector } from 'react-redux';
+import { HelpCircle } from 'lucide-react';
+
 /*
   This is the tutorial displayed when the "How to use" button is clicked
   This needs to be a class component to be compatible with updateStepElement from intro.js
@@ -103,7 +103,7 @@ export default class Tutorial extends Component<TutorialProps, TutorialState> {
           },
           {
             title: 'Toggle Record Button',
-            element: '#recordBtn',
+            element: '.record-button-container',
             intro:
               '<ul><li>Toggle record button to pause state changes on target application</li></ul>',
             position: 'right',
@@ -191,43 +191,6 @@ export default class Tutorial extends Component<TutorialProps, TutorialState> {
             element: '.bargraph-position',
             intro:
               '<ul><li>Here we can analyze the render times of our app</li> <li>This is the current series of state changes within our app</li> <li>Mouse over the bargraph elements for details on each specific component</li></ul>',
-            position: 'top',
-          },
-          {
-            title: 'Saving Series & Actions',
-            element: '.save-series-button',
-            intro: '<ul><li>Click here to save your current series data</li></ul>',
-            position: 'top',
-          },
-          {
-            title: 'Saving Series & Actions',
-            element: '#seriesname',
-            intro: '<ul><li>We can now give our series a name or leave it at the default</li></ul>',
-            position: 'top',
-          },
-          {
-            title: 'Saving Series & Actions',
-            element: '.actionname',
-            intro:
-              '<ul><li>If we wish to save a specific action to compare later, give it a name here</li></ul>',
-            position: 'top',
-          },
-          {
-            title: 'Saving Series & Actions',
-            element: '.save-series-button',
-            intro:
-              '<ul><li>Press save series again.</li> <li>Your series and actions are now saved!</li></ul>',
-            position: 'top',
-          },
-          {
-            title: 'Comparison Tab',
-            element: '#router-link-performance-comparison',
-            intro: "<ul><li>Now let's head over to the comparison tab</li></ul>",
-            position: 'top',
-          },
-          {
-            title: 'Comparing Series',
-            intro: '<ul><li>Here we can select a saved series or action to compare</li></ul>',
             position: 'top',
           },
         ];
@@ -359,13 +322,8 @@ export default class Tutorial extends Component<TutorialProps, TutorialState> {
           onBeforeChange={(currentStepIndex) => onChangeHandler(currentStepIndex)} // Callback called before changing the current step.
           ref={(steps) => (this.steps = steps)} // ref allows access to intro.js API
         />
-        <Button
-          variant='outlined'
-          className='howToUse-button'
-          type='button'
-          onClick={() => startIntro()}
-        >
-          <HelpOutlineIcon className='button-icon' sx={{ pr: 1 }} /> Tutorial
+        <Button className='howToUse-button' type='button' onClick={() => startIntro()}>
+          <HelpCircle className='button-icon' size={18} /> Tutorial
         </Button>
       </>
     );

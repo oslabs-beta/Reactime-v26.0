@@ -202,12 +202,15 @@ export const mainSlice = createSlice({
     },
 
     changeSlider: (state, action) => {
+      //should really be called jump to snapshot
       const { port, currentTab, tabs } = state;
       const { hierarchy, snapshots } = tabs[currentTab] || {};
 
       // finds the name by the action.payload parsing through the hierarchy to send to background.js the current name in the jump action
       const nameFromIndex = findName(action.payload, hierarchy);
       // nameFromIndex is a number based on which jump button is pushed
+
+      console.log('changeSlider to ', action.payload);
 
       port.postMessage({
         action: 'jumpToSnap',
@@ -449,7 +452,15 @@ export const mainSlice = createSlice({
 
     toggleExpanded: (state, action) => {
       const { tabs, currentTab } = state;
-      // find correct node from currLocation and toggle isExpanded
+      const snapshot = tabs[currentTab].currLocation.stateSnapshot;
+
+      // Special case for root node
+      if (action.payload.name === 'root' && snapshot.name === 'root') {
+        snapshot.isExpanded = !snapshot.isExpanded;
+        return;
+      }
+
+      // Regular case for other nodes
       const checkChildren = (node) => {
         if (_.isEqual(node, action.payload)) {
           node.isExpanded = !node.isExpanded;
@@ -459,7 +470,7 @@ export const mainSlice = createSlice({
           });
         }
       };
-      checkChildren(tabs[currentTab].currLocation.stateSnapshot);
+      checkChildren(snapshot);
     },
 
     deleteSeries: (state) => {

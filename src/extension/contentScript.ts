@@ -2,6 +2,24 @@
 // in Web Metrics tab of Reactime app.
 import { onTTFB, onLCP, onFID, onFCP, onCLS, onINP } from 'web-vitals';
 
+chrome.runtime.sendMessage({ type: 'SIGN_CONNECT' });
+console.log('Content script loaded.');
+
+function establishConnection() {
+  const port = chrome.runtime.connect({ name: 'keepAlivePort' }); // Reconnect if we lose connection to the port at any time
+  port.onMessage.addListener((msg) => {
+    console.log('Received message from background:', msg);
+  });
+
+  port.onDisconnect.addListener(() => {
+    console.warn('Port disconnected, attempting to reconnect...');
+    setTimeout(establishConnection, 1000); // Retry after 1 second
+  });
+}
+
+// Initially establish connection
+establishConnection();
+
 // Reactime application starts off with this file, and will send
 // first message to background.js for initial tabs object set up.
 // A "tabs object" holds the information of the current tab,
@@ -27,6 +45,8 @@ window.addEventListener('message', (msg) => {
   const { action }: { action: string } = msg.data;
   if (action === 'recordSnap') {
     if (isRecording) {
+      // add timestamp to payload for the purposes of duplicate screenshot check in backgroundscript -ellie
+      msg.data.payload.children[0].componentData.timestamp = Date.now();
       chrome.runtime.sendMessage(msg.data);
     }
   }
